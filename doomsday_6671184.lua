@@ -1,4 +1,5 @@
-
+-- Конфиг-система в стиле Neverlose (оптимизированная)
+-- Повышена читаемость, переиспользуемость и расширяемость логики
 
 local clipboard = require("neverlose/clipboard")
 
@@ -9,6 +10,7 @@ local function pad(text, count)
     return text .. string.rep(HSP, count)
 end
 
+--- animations.lua
 local animations do
     animations = {}
     local anim = color()
@@ -66,7 +68,7 @@ local sidebar do
 end
 
 
--- @startregion
+
 local icons do
     icons = {}
 
@@ -82,6 +84,7 @@ local icons do
         left = left or 0
         right = right or 0
     
+        -- Определяем префикс цвета
         local prefix = ""
         if color then
             -- Если пользователь уже указал \a, не добавляем повторно
@@ -95,7 +98,7 @@ local icons do
         return prefix .. string.rep(HSP, left) .. icon .. string.rep(HSP, right) .. "\aDEFAULT"
     end
 end
--- @endregion
+
 
 local tabs = {
     main = icons.get("house-blank", 0, 0, "{Link Active}"),
@@ -104,7 +107,7 @@ local tabs = {
 }
 
     
--- @startregion
+
 local sounds do
     local play = cvar.playvol
     sounds = {
@@ -118,9 +121,9 @@ local sounds do
         play:call(path, 1)
     end
 end
--- @endregion
 
--- @startregion
+
+
 local prints do
     prints = {}
     local color_error = "\aCE4848FF"
@@ -138,7 +141,7 @@ local prints do
         sounds.play(sounds.success)
     end
 end
--- @endregion
+
 
 local nl do
     nl = { }
@@ -250,7 +253,7 @@ local nl do
 end
 
 
--- @startregion
+
 local localplayer do
     localplayer = { }
 
@@ -329,10 +332,10 @@ local localplayer do
     events.createmove(on_createmove)
     events.createmove_run(on_createmove_run)
 end
--- @endregion
 
 
--- @startregion
+
+
 local config do
     config = { _items = {} }
 
@@ -558,9 +561,9 @@ local config do
         end)
     end
 end
--- @endregion
 
--- @startregion
+
+
 local config_ui do
     local tab = ui.create(tabs.main, "preset", 1)
     config_list = tab:list("", {})
@@ -742,9 +745,9 @@ local config_ui do
     end)
     
 end
--- @endregion
 
--- @startregion
+
+
 local sub_ui do
     local sub = { }
 
@@ -752,7 +755,7 @@ local sub_ui do
 
     sub.switch = config.push(sub.tab:switch("This is Switch"))
 end
--- @endregion
+
 
 local condition = {
     STANDING       = "Stand",
@@ -764,219 +767,151 @@ local condition = {
     AIR_CROUCH     = "Air Crouch",
 }
 
+
 local angles_frontend do
-    angles = {}
-    angles.conditions = {
+    local settings = {}
+    settings.states = {
         condition.STANDING,
         condition.MOVING,
         condition.SLOW_WALK,
         condition.CROUCH_STAND,
         condition.CROUCH_MOVE,
         condition.IN_AIR,
-        condition.AIR_CROUCH,
+        condition.AIR_CROUCH
     }
 
-    angles.selection = ui.create(tabs.angles,     "Selection",         1)
-    angles.main      = ui.create(tabs.angles,     "Builder",         2)
-    angles.second    = ui.create(tabs.angles,     "##Angles",            2)
-    angles.body_yaw = ui.create(tabs.angles,      "##Body Yaw", 2)
+    local tabs_angles = tabs.angles
+    local state_selector = config.push(ui.create(tabs_angles, " ##state_selector", 2):combo("State", unpack(settings.states)))
+    local builder_tab = ui.create(tabs_angles, "angle_builder", 2)
+    local mode_selector = config.push(ui.create(tabs_angles, " ##Mode selector", 1):list("##Mode", "Builder", "Hotkeys", "Features"))
 
-    angles.break_lc  = ui.create(tabs.angles,     "##Break LC",  1)
+    local state_groups = {}
 
-
-    angles.condition_selector = config.push(
-        angles.main:combo("", angles.conditions)
-    )
-
-    angles.selection = config.push(
-        angles.selection:list("", "Builder", "Hotkeys", "Features")
-    )
-
-
-    local function apply_yaw_visibility(items)
-        local yaw = items.yaw
-        local idx = yaw:get()
-        local on_static = idx == "Offset"
-        local on_sb     = idx == "Side Based"
-
-        items.yaw_static:visibility(on_static)
-        items.yaw_side_left:visibility(on_sb)
-        items.yaw_side_right:visibility(on_sb)
-        items.yaw_side_randomize:visibility(on_sb)
+    local function update_yaw_visibility(ctx)
+        local mode = ctx.yaw_mode:get()
+        ctx.yaw_offset:visibility(mode == "Offset")
+        local side_based = (mode == "Side Based")
+        ctx.yaw_left:visibility(side_based)
+        ctx.yaw_right:visibility(side_based)
+        ctx.yaw_random:visibility(side_based)
     end
 
-    local function apply_side_delay_visibility(items)
-        local dm = items.side_delay_mode:get()
-        local on_static  = dm == "Static"
-        local on_random  = dm == "Randomize"
-    
-        items.side_delay_static:visibility(on_static)
-        items.side_delay_min:visibility(on_random)
-        items.side_delay_max:visibility(on_random)
+    local function update_side_visibility(ctx)
+        local mode = ctx.side_mode:get()
+        ctx.side_invert:visibility(mode == "Static")
+        local jitter = (mode == "Jitter")
+        ctx.side_chance:visibility(jitter)
+        ctx.side_delay_type:visibility(jitter)
+        local delay_type = ctx.side_delay_type:get()
+        ctx.side_delay_static:visibility(jitter and delay_type == "Static")
+        local randomizing = (delay_type == "Random")
+        ctx.side_delay_min:visibility(jitter and randomizing)
+        ctx.side_delay_max:visibility(jitter and randomizing)
     end
-    
-    local function apply_side_visibility(items)
-        local mode = items.side:get()
-        local on_static = mode == "Static"
-        local on_jitter = mode == "Jitter"
-    
-        items.side_inverter:visibility(on_static)
 
-        items.side_delay_mode:visibility(on_jitter)
-        items.side_chance:visibility(on_jitter)
+    local function update_body_visibility(ctx)
+        local mode = ctx.body_limit_mode:get()
+        local body_yaw = ctx.body_yaw_enabled:get() == false
+        ctx.body_limit_mode:disabled(body_yaw)
+        ctx.body_static_limit:visibility(mode == "Static")
+        ctx.body_sway_from:visibility(mode == "Sway")
+        ctx.body_sway_to:visibility(mode == "Sway")
+        local randomizing = (mode == "Random")
+        ctx.body_random_min:visibility(randomizing)
+        ctx.body_random_max:visibility(randomizing)
+    end
 
-        if on_jitter then
-            apply_side_delay_visibility(items)
-        else
-            items.side_delay_static:visibility(false)
-            items.side_delay_min:visibility(false)
-            items.side_delay_max:visibility(false)
+    local function build_angle_controls(tab, ctx)
+        ctx.yaw_mode = config.push(tab:combo("Yaw", "Offset", "Side Based"))
+        local yaw_tab = ctx.yaw_mode:create("YawSettings")
+        ctx.yaw_offset = config.push(yaw_tab:slider("Offset##yaw", -180, 180, 0, 1))
+        ctx.yaw_left   = config.push(yaw_tab:slider("Left##yaw",   -180, 180, 0, 1))
+        ctx.yaw_right  = config.push(yaw_tab:slider("Right##yaw",  -180, 180, 0, 1))
+        ctx.yaw_random = config.push(yaw_tab:slider("Random##yaw",   0,   100, 0, 1))
+        ctx.yaw_mode:set_callback(function() update_yaw_visibility(ctx) end)
+        update_yaw_visibility(ctx)
+
+        ctx.side_mode       = config.push(tab:combo("Side", "Static", "Jitter"))
+        local side_tab      = ctx.side_mode:create("SideSettings")
+        ctx.side_invert     = config.push(side_tab:switch("Invert##side"))
+        ctx.side_chance     = config.push(side_tab:slider("##side", 0, 100, 100, 1, "%"))
+        ctx.side_delay_type = config.push(side_tab:combo("Delay Type##side", "Static", "Random"))
+        ctx.side_delay_static= config.push(side_tab:slider("Value##side", 1, 16, 1, 1))
+        ctx.side_delay_min   = config.push(side_tab:slider("Min ##side", 1, 16, 1, 1))
+        ctx.side_delay_max   = config.push(side_tab:slider("Max ##side", 1, 16, 1, 1))
+        ctx.side_mode:set_callback(function() update_side_visibility(ctx) end)
+        ctx.side_delay_type:set_callback(function() update_side_visibility(ctx) end)
+        update_side_visibility(ctx)
+
+        ctx.mod_mode  = config.push(tab:combo("Modifier", {
+            "Disabled", "LeftAdd", "RightAdd", "Center", "ThreeWay", "Random"
+        }))
+        local mod_tab = ctx.mod_mode:create("ModifierSettings")
+        ctx.mod_value = config.push(mod_tab:slider("Value##mod", -180, 180, 0, 1))
+    end
+
+    local function build_body_controls(tab, ctx)
+        ctx.body_yaw_enabled = config.push(tab:switch("Body"))
+        ctx.body_limit_mode  = config.push(tab:combo("Limit", "Static", "Sway", "Random"))
+        local body_tab       = ctx.body_limit_mode:create("BodySettings")
+        ctx.body_static_limit= config.push(body_tab:slider("Value##body", 0, 60, 60, 1))
+        ctx.body_sway_from   = config.push(body_tab:slider("From##body", 0, 60, 60, 1))
+        ctx.body_sway_to     = config.push(body_tab:slider("To##body",   0, 60, 60, 1))
+        ctx.body_random_min  = config.push(body_tab:slider("Min##body",   0, 60, 60, 1))
+        ctx.body_random_max  = config.push(body_tab:slider("Max##body",   0, 60, 60, 1))
+        ctx.body_yaw_enabled:set_callback(function() update_body_visibility(ctx) end)
+        ctx.body_limit_mode:set_callback(function() update_body_visibility(ctx) end)
+        update_body_visibility(ctx)
+    end
+
+    local function build_exploit_controls(tab, ctx)
+        ctx.exploit_options = config.push(tab:selectable("Exploit", "Double Tap", "Hide Shots"))
+    end
+
+    local function build_state_group(state)
+        local prefix = "##" .. state
+        local ctx = {}
+        local angle_tab   = ui.create(tabs_angles, prefix .. "_angles", 2)
+        local body_tab    = ui.create(tabs_angles, prefix .. "_body",   2)
+        local exploit_tab = ui.create(tabs_angles, prefix .. "_exploit",1)
+        state_groups[state] = {angle_tab, body_tab, exploit_tab}
+        build_angle_controls(angle_tab, ctx)
+        build_body_controls(body_tab, ctx)
+        build_exploit_controls(exploit_tab, ctx)
+    end
+
+    for _, state in ipairs(settings.states) do
+        build_state_group(state)
+    end
+
+    local function update_state_visibility()
+        local current = state_selector:get()
+        for state, tabs in pairs(state_groups) do
+            local visible = (state == current)
+            tabs[1]:visibility(visible)
+            tabs[2]:visibility(visible)
+            tabs[3]:visibility(visible)
         end
     end
 
-    local function apply_limit_visibility(items)
-        local mode = items.body_yaw_limit_mode:get()
-        local on_static = mode == "Static"
-        local on_sway = mode == "Sway"
-        local on_random = mode == "Randomize"
-
-        items.body_yaw_static_limit:visibility(on_static)
-        items.body_yaw_sway_limit_1:visibility(on_sway)
-        items.body_yaw_sway_limit_2:visibility(on_sway)
-        items.body_yaw_random_limit_1:visibility(on_random)
-        items.body_yaw_random_limit_2:visibility(on_random)
-
-        local off = items.body_yaw:get() == false
-        items.body_yaw_limit_mode:disabled(off)
-        items.body_yaw_static_limit:disabled(off)
-        items.body_yaw_sway_limit_1:disabled(off)
-        items.body_yaw_sway_limit_2:disabled(off)
-        items.body_yaw_random_limit_1:disabled(off)
-        items.body_yaw_random_limit_2:disabled(off)
-    end
-
-
-    local function build_for_condition(cond, items)
-
-        items.yaw =                config.push(angles.second:combo("Yaw", "Offset", "Side Based"))
-        local yaw_group =          items.yaw:create(cond .. " Yaw Settings")
-        items.yaw_static         = config.push(yaw_group:slider("Offset",   -180, 180, 0, 1))
-        items.yaw_side_left      = config.push(yaw_group:slider("Left",           -180, 180, 0, 1))
-        items.yaw_side_right     = config.push(yaw_group:slider("Right",          -180, 180, 0, 1))
-        items.yaw_side_randomize = config.push(yaw_group:slider("Randomize",        0, 100, 0, 1))
-
-        items.side     =           config.push(angles.second:combo("Side",     "Static", "Jitter"))
-        local side_group =         items.side:create(cond .. " Yaw Settings")
-        items.side_inverter =      config.push(side_group:switch("Inverter"))
-        items.side_chance =        config.push(side_group:slider("", 0, 100, 100, 1, "%"))
-        items.side_delay_mode =    config.push(side_group:combo("Delay Mode","Static", "Randomize"))
-        items.side_delay_static =  config.push(side_group:slider("Value##Static", 1, 16, 1, 1))
-        items.side_delay_min =     config.push(side_group:slider("Min##Random", 1, 16, 1, 1))
-        items.side_delay_max =     config.push(side_group:slider("Max##Random", 1, 16, 1, 1))
-
-
-
-        items.modifier = config.push(angles.second:combo("Modifier", {"Disabled","Left Add","Right Add","Center","3-Way","Random"}))
-        local mod_grp  = items.modifier:create()
-        items.offset   = config.push(mod_grp:slider("Value",   -180, 180, 0, 1))
-
-        items.body_yaw = config.push(angles.body_yaw:switch("Body Yaw"))
-        items.body_yaw_limit_mode = config.push(angles.body_yaw:combo("Limit Mode", {"Static", "Sway", "Randomize"}))
-        items.body_yaw_static_limit = config.push(angles.body_yaw:slider("Value##Static", 0, 60, 60, 1))
-        items.body_yaw_sway_limit_1 = config.push(angles.body_yaw:slider("From##Sway", 0, 60, 60, 1))
-        items.body_yaw_sway_limit_2 = config.push(angles.body_yaw:slider("To##Sway", 0, 60, 60, 1))
-        items.body_yaw_random_limit_1 = config.push(angles.body_yaw:slider("Min.##Randomize", 0, 60, 60, 1))
-        items.body_yaw_random_limit_2 = config.push(angles.body_yaw:slider("Max.##Randomize", 0, 60, 60, 1))
-
-
-        
-
-
-        items.exploiting = config.push(angles.break_lc:selectable("Exploiting On", "Double Tap", "Hide Shots"))
-
-        items.yaw:set_callback(function()
-            apply_yaw_visibility(items)
-        end, true)
-
-        items.side:set_callback(function() apply_side_visibility(items) end, true)
-        items.side_delay_mode:set_callback(function() apply_side_delay_visibility(items) end, true)
-
-
-        items.body_yaw:set_callback(function() apply_limit_visibility(items) end, true)
-        items.body_yaw_limit_mode:set_callback(function() apply_limit_visibility(items) end, true)
-    end
-
-    local function create_condition_settings(selector, conditions, build)
-        local items_by_cond = {}
-        for _, cond in ipairs(conditions) do
-            local items = {}
-            items_by_cond[cond] = items
-            build(cond, items)
-            for _, item in pairs(items) do
-                item:visibility(false)
-            end
+    local function update_builder_visibility()
+        local show = mode_selector:get(1) == 1
+        builder_tab:visibility(show)
+        state_selector:visibility(show)
+        for _, tabs in pairs(state_groups) do
+            tabs[1]:visibility(false)
+            tabs[2]:visibility(false)
+            tabs[3]:visibility(false)
         end
-        return items_by_cond
+        if show then update_state_visibility() end
     end
 
-    angles.groups = create_condition_settings(
-        angles.condition_selector,
-        angles.conditions,
-        build_for_condition
-    )
-
-
-    local function update_ui()
-        local is_builder = angles.selection:get() == 1
-
-
-        angles.condition_selector:visibility(is_builder)
-        angles.second:visibility(is_builder)
-
-
-        for _, items in pairs(angles.groups) do
-            for _, item in pairs(items) do
-                item:visibility(false)
-            end
-        end
-
-        if is_builder then
-            local idx   = angles.condition_selector:get()
-            local items = angles.groups[idx]
-            if items then
-                for _, item in pairs(items) do
-                    item:visibility(true)
-                end
-                apply_yaw_visibility(items)
-                apply_side_visibility(items)
-                apply_limit_visibility(items)
-            end
-        end
-    end
-
-    angles.selection:set_callback(update_ui)
-    angles.condition_selector:set_callback(update_ui)
-    update_ui()
+    state_selector:set_callback(update_state_visibility, true)
+    mode_selector:set_callback(update_builder_visibility, true)
 end
 
-    
--- @endregion
 
-
--- @startregion
 local angles_backend do
-    local function get_current_settings()
-        local idx  = angles.condition_selector:get()
-        local cond = angles.conditions[idx]
-        local items = angles.groups[cond]
-    
-        return cond, {
-            yaw        = items.yaw:get(),
-            side      = items.side:get(),
-            mode_text  = items.mode:get(),
-        }
-    end
-
     local function compute_state()
         if localplayer.is_onground then
             if nl.antiaim.misc.slow_walk:get() then
@@ -999,7 +934,7 @@ local angles_backend do
         return localplayer.is_crouched and condition.AIR_CROUCH or condition.IN_AIR
     end
 end
--- @endregion
+
 
 local misc_frontend do
     misc = { }
