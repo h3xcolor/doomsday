@@ -769,170 +769,290 @@ local condition = {
 
 
 local angles_frontend do
-    local settings = {}
-    settings.states = {
+    angles = {}
+    angles.conditions = {
         condition.STANDING,
         condition.MOVING,
         condition.SLOW_WALK,
         condition.CROUCH_STAND,
         condition.CROUCH_MOVE,
         condition.IN_AIR,
-        condition.AIR_CROUCH
+        condition.AIR_CROUCH,
     }
 
-    local tabs_angles = tabs.angles
-    local state_selector = config.push(ui.create(tabs_angles, " ##state_selector", 2):combo("State", unpack(settings.states)))
-    local builder_tab = ui.create(tabs_angles, "angle_builder", 2)
-    local mode_selector = config.push(ui.create(tabs_angles, " ##Mode selector", 1):list("##Mode", "Builder", "Hotkeys", "Features"))
+    angles.selection = ui.create(tabs.angles, "Selection", 1)
+    angles.main = ui.create(tabs.angles, "Builder", 2)
 
-    local state_groups = {}
+    angles.condition_selector = config.push(angles.main:combo("", angles.conditions))
+    angles.selection = config.push(angles.selection:list("", "Builder", "Hotkeys", "Features"))
 
-    local function update_yaw_visibility(ctx)
-        local mode = ctx.yaw_mode:get()
-        ctx.yaw_offset:visibility(mode == "Offset")
-        local side_based = (mode == "Side Based")
-        ctx.yaw_left:visibility(side_based)
-        ctx.yaw_right:visibility(side_based)
-        ctx.yaw_random:visibility(side_based)
+    local function update_visibility_yaw(ctx)
+        local m = ctx.yaw:get()
+        ctx.yaw_off:visibility(m == "Offset")
+        local show = (m == "Side Based")
+        ctx.yaw_l:visibility(show)
+        ctx.yaw_r:visibility(show)
+        ctx.yaw_rand:visibility(show)
     end
 
-    local function update_side_visibility(ctx)
-        local mode = ctx.side_mode:get()
-        ctx.side_invert:visibility(mode == "Static")
-        local jitter = (mode == "Jitter")
-        ctx.side_chance:visibility(jitter)
-        ctx.side_delay_type:visibility(jitter)
-        local delay_type = ctx.side_delay_type:get()
-        ctx.side_delay_static:visibility(jitter and delay_type == "Static")
-        local randomizing = (delay_type == "Random")
-        ctx.side_delay_min:visibility(jitter and randomizing)
-        ctx.side_delay_max:visibility(jitter and randomizing)
+    local function update_visibility_side(ctx)
+        local m = ctx.side:get()
+        ctx.side_inv:visibility(m == "Static")
+        local j = (m == "Jitter")
+        ctx.side_ch:visibility(j)
+        ctx.side_mode:visibility(j)
+        ctx.side_s:visibility(j and ctx.side_mode:get() == "Static")
+        local r = (ctx.side_mode:get() == "Randomize")
+        ctx.side_min:visibility(j and r)
+        ctx.side_max:visibility(j and r)
     end
 
-    local function update_body_visibility(ctx)
-        local mode = ctx.body_limit_mode:get()
-        local body_yaw = ctx.body_yaw_enabled:get() == false
-        ctx.body_limit_mode:disabled(body_yaw)
-        ctx.body_static_limit:visibility(mode == "Static")
-        ctx.body_sway_from:visibility(mode == "Sway")
-        ctx.body_sway_to:visibility(mode == "Sway")
-        local randomizing = (mode == "Random")
-        ctx.body_random_min:visibility(randomizing)
-        ctx.body_random_max:visibility(randomizing)
+    local function update_visibility_body(ctx)
+        local mode = ctx.by_mode:get()
+        ctx.by_mode:visibility(true)
+        ctx.by_stat:visibility(mode == "Static")
+        ctx.by_sw1:visibility(mode == "Sway")
+        ctx.by_sw2:visibility(mode == "Sway")
+        ctx.by_r1:visibility(mode == "Randomize")
+        ctx.by_r2:visibility(mode == "Randomize")
     end
 
-    local function build_angle_controls(tab, ctx)
-        ctx.yaw_mode = config.push(tab:combo("Yaw", "Offset", "Side Based"))
-        local yaw_tab = ctx.yaw_mode:create("YawSettings")
-        ctx.yaw_offset = config.push(yaw_tab:slider("Offset##yaw", -180, 180, 0, 1))
-        ctx.yaw_left   = config.push(yaw_tab:slider("Left##yaw",   -180, 180, 0, 1))
-        ctx.yaw_right  = config.push(yaw_tab:slider("Right##yaw",  -180, 180, 0, 1))
-        ctx.yaw_random = config.push(yaw_tab:slider("Random##yaw",   0,   100, 0, 1))
-        ctx.yaw_mode:set_callback(function() update_yaw_visibility(ctx) end)
-        update_yaw_visibility(ctx)
+    local function generate_angles(tab, ctx)
+        ctx.yaw = config.push(tab:combo("Yaw", "Offset", "Side Based"))
+        local yaw = ctx.yaw:create("Yaw Settings")
+        ctx.yaw_off  = config.push(yaw:slider("Offset##yaw_off", -180, 180, 0, 1))
+        ctx.yaw_l    = config.push(yaw:slider("Left##yaw_side",  -180, 180, 0, 1))
+        ctx.yaw_r    = config.push(yaw:slider("Right##yaw_side", -180, 180, 0, 1))
+        ctx.yaw_rand = config.push(yaw:slider("Rand##yaw_side",     0, 100, 0, 1))
+        ctx.yaw:set_callback(function() update_visibility_yaw(ctx) end)
+        update_visibility_yaw(ctx)
 
-        ctx.side_mode       = config.push(tab:combo("Side", "Static", "Jitter"))
-        local side_tab      = ctx.side_mode:create("SideSettings")
-        ctx.side_invert     = config.push(side_tab:switch("Invert##side"))
-        ctx.side_chance     = config.push(side_tab:slider("##side", 0, 100, 100, 1, "%"))
-        ctx.side_delay_type = config.push(side_tab:combo("Delay Type##side", "Static", "Random"))
-        ctx.side_delay_static= config.push(side_tab:slider("Value##side", 1, 16, 1, 1))
-        ctx.side_delay_min   = config.push(side_tab:slider("Min ##side", 1, 16, 1, 1))
-        ctx.side_delay_max   = config.push(side_tab:slider("Max ##side", 1, 16, 1, 1))
-        ctx.side_mode:set_callback(function() update_side_visibility(ctx) end)
-        ctx.side_delay_type:set_callback(function() update_side_visibility(ctx) end)
-        update_side_visibility(ctx)
+        ctx.side = config.push(tab:combo("Side", "Static", "Jitter"))
+        local side = ctx.side:create("Side Settings")
+        ctx.side_inv  = config.push(side:switch("Inv##side_static"))
+        ctx.side_ch   = config.push(side:slider("##side_jitter", 0, 100, 100, 1, "%"))
+        ctx.side_mode = config.push(side:combo("Delay##side_jitter", "Static", "Randomize"))
+        ctx.side_s    = config.push(side:slider("Val##side_delay_static",  1, 16, 1, 1))
+        ctx.side_min  = config.push(side:slider("Min##side_delay_random",  1, 16, 1, 1))
+        ctx.side_max  = config.push(side:slider("Max##side_delay_random",  1, 16, 1, 1))
+        ctx.side:set_callback(function() update_visibility_side(ctx) end)
+        ctx.side_mode:set_callback(function() update_visibility_side(ctx) end)
+        update_visibility_side(ctx)
 
-        ctx.mod_mode  = config.push(tab:combo("Modifier", {
-            "Disabled", "LeftAdd", "RightAdd", "Center", "ThreeWay", "Random"
-        }))
-        local mod_tab = ctx.mod_mode:create("ModifierSettings")
-        ctx.mod_value = config.push(mod_tab:slider("Value##mod", -180, 180, 0, 1))
+        ctx.mod = config.push(tab:combo("Mod", {"Disabled", "Center", "3-Way", "Random"}))
+        local mod = ctx.mod:create("Mod Settings")
+        ctx.mod_val = config.push(mod:slider("Val##mod_val", -180, 180, 0, 1))
     end
 
-    local function build_body_controls(tab, ctx)
-        ctx.body_yaw_enabled = config.push(tab:switch("Body"))
-        ctx.body_limit_mode  = config.push(tab:combo("Limit", "Static", "Sway", "Random"))
-        local body_tab       = ctx.body_limit_mode:create("BodySettings")
-        ctx.body_static_limit= config.push(body_tab:slider("Value##body", 0, 60, 60, 1))
-        ctx.body_sway_from   = config.push(body_tab:slider("From##body", 0, 60, 60, 1))
-        ctx.body_sway_to     = config.push(body_tab:slider("To##body",   0, 60, 60, 1))
-        ctx.body_random_min  = config.push(body_tab:slider("Min##body",   0, 60, 60, 1))
-        ctx.body_random_max  = config.push(body_tab:slider("Max##body",   0, 60, 60, 1))
-        ctx.body_yaw_enabled:set_callback(function() update_body_visibility(ctx) end)
-        ctx.body_limit_mode:set_callback(function() update_body_visibility(ctx) end)
-        update_body_visibility(ctx)
+    local function generate_body(tab, ctx)
+        ctx.by = config.push(tab:switch("Body Yaw"))
+        ctx.by_mode = config.push(tab:combo("Limit Mode##limit_mode", {"Static", "Sway", "Randomize"}))
+        local bod = ctx.by_mode:create("Body Yaw Settings")
+        ctx.by_stat = config.push(bod:slider("Val##limit_static",  0, 60, 60, 1))
+        ctx.by_sw1  = config.push(bod:slider("From##limit_sway",   0, 60, 60, 1))
+        ctx.by_sw2  = config.push(bod:slider("To##limit_sway",     0, 60, 60, 1))
+        ctx.by_r1   = config.push(bod:slider("Min##limit_random",  0, 60, 60, 1))
+        ctx.by_r2   = config.push(bod:slider("Max##limit_random",  0, 60, 60, 1))
+        ctx.by_mode:set_callback(function() update_visibility_body(ctx) end)
+        update_visibility_body(ctx)
     end
 
-    local function build_exploit_controls(tab, ctx)
-        ctx.exploit_options = config.push(tab:selectable("Exploit", "Double Tap", "Hide Shots"))
+    local function generate_lc(tab, ctx)
+        ctx.exploit = config.push(tab:selectable("Exploit", "Double Tap", "Hide Shots"))
     end
 
-    local function build_state_group(state)
-        local prefix = "##" .. state
-        local ctx = {}
-        local angle_tab   = ui.create(tabs_angles, prefix .. "_angles", 2)
-        local body_tab    = ui.create(tabs_angles, prefix .. "_body",   2)
-        local exploit_tab = ui.create(tabs_angles, prefix .. "_exploit",1)
-        state_groups[state] = {angle_tab, body_tab, exploit_tab}
-        build_angle_controls(angle_tab, ctx)
-        build_body_controls(body_tab, ctx)
-        build_exploit_controls(exploit_tab, ctx)
+    angles.groups = {}
+
+    local function build_for_condition(cond, ctx)
+        local id = "##" .. cond
+        local a = ui.create(tabs.angles, id .. "_angles", 2)
+        local b = ui.create(tabs.angles, id .. "_body",   2)
+        local l = ui.create(tabs.angles, id .. "_lc",     1)
+        angles.groups[cond] = {a, b, l}
+        generate_angles(a, ctx)
+        generate_body(b, ctx)
+        generate_lc(l, ctx)
     end
 
-    for _, state in ipairs(settings.states) do
-        build_state_group(state)
+    local function create_condition_settings()
+        local result = {}
+        for _, cond in ipairs(angles.conditions) do
+            result[cond] = {}
+            build_for_condition(cond, result[cond])
+        end
+        return result
     end
 
-    local function update_state_visibility()
-        local current = state_selector:get()
-        for state, tabs in pairs(state_groups) do
-            local visible = (state == current)
-            tabs[1]:visibility(visible)
-            tabs[2]:visibility(visible)
-            tabs[3]:visibility(visible)
+    angles.groups_data = create_condition_settings()
+
+    local function update_visibility_for_condition()
+        local sel = angles.condition_selector:get()
+        for cond, tabs in pairs(angles.groups) do
+            local vis = (cond == sel)
+            tabs[1]:visibility(vis)
+            tabs[2]:visibility(vis)
+            tabs[3]:visibility(vis)
         end
     end
 
-    local function update_builder_visibility()
-        local show = mode_selector:get(1) == 1
-        builder_tab:visibility(show)
-        state_selector:visibility(show)
-        for _, tabs in pairs(state_groups) do
-            tabs[1]:visibility(false)
-            tabs[2]:visibility(false)
-            tabs[3]:visibility(false)
-        end
-        if show then update_state_visibility() end
+    local function update_visibility_for_builder()
+        local show = angles.selection:get(1) == 1
+        angles.main:visibility(show)
+        angles.condition_selector:visibility(show)
+        if show then update_visibility_for_condition() end
     end
 
-    state_selector:set_callback(update_state_visibility, true)
-    mode_selector:set_callback(update_builder_visibility, true)
+    angles.condition_selector:set_callback(update_visibility_for_condition, true)
+    angles.selection:set_callback(update_visibility_for_builder, true)
 end
 
-
 local angles_backend do
+
+    local sent_packets = 0
+    local current_delay = 0
+    local tick_counter = 0
+    local chance_tick_counter = 0
+
     local function compute_state()
         if localplayer.is_onground then
             if nl.antiaim.misc.slow_walk:get() then
                 return condition.SLOW_WALK
             end
-    
             if not localplayer.is_moving then
-                if localplayer.is_crouched then
-                    return condition.CROUCH_STAND
-                end
-                return condition.STANDING
+                return localplayer.is_crouched and condition.CROUCH_STAND or condition.STANDING
             end
-    
-            if localplayer.is_crouched then
-                return condition.CROUCH_MOVE
-            end
-            return condition.MOVING
+            return localplayer.is_crouched and condition.CROUCH_MOVE or condition.MOVING
         end
-    
         return localplayer.is_crouched and condition.AIR_CROUCH or condition.IN_AIR
     end
+
+    local function get_current_settings()
+        local state = compute_state()
+        local ctx = angles.groups_data[state]
+        if not ctx then return {} end
+
+        return {
+            yaw = {
+                mode   = ctx.yaw:get(),
+                offset = ctx.yaw_off:get(),
+                left   = ctx.yaw_l:get(),
+                right  = ctx.yaw_r:get(),
+                random = ctx.yaw_rand:get()
+            },
+            side = {
+                mode    = ctx.side:get(),
+                invert  = ctx.side_inv:get(),
+                chance  = ctx.side_ch:get(),
+                delay   = ctx.side_mode:get(),
+                static  = ctx.side_s:get(),
+                minimum = ctx.side_min:get(),
+                maximum = ctx.side_max:get()
+            },
+            body = {
+                enabled    = ctx.by:get(),
+                mode       = ctx.by_mode:get(),
+                static_val = ctx.by_stat:get(),
+                sway_from  = ctx.by_sw1:get(),
+                sway_to    = ctx.by_sw2:get(),
+                rand_min   = ctx.by_r1:get(),
+                rand_max   = ctx.by_r2:get()
+            },
+            exploit = ctx.exploit:get()
+        }
+    end
+
+    local function should_switch_side(tick_interval)
+        chance_tick_counter = chance_tick_counter + 1
+
+        if chance_tick_counter >= tick_interval then
+            chance_tick_counter = 0
+            local settings = get_current_settings()
+            local roll = utils.random_int(0, 100)
+            return roll <= settings.side.chance
+        end
+
+        return false
+    end
+
+    local function calculate_delay()
+        local settings = get_current_settings()
+        local mode = settings.side.delay
+
+        if mode == "Static" then
+            return settings.side.static
+
+        elseif mode == "Randomize" then
+            tick_counter = tick_counter + 1
+
+            if tick_counter >= current_delay then
+                current_delay = utils.random_int(settings.side.minimum, settings.side.maximum)
+                tick_counter = 0
+            end
+
+            return current_delay
+        end
+
+        return 0
+    end
+
+    local function get_inverter()
+        local settings = get_current_settings()
+        local mode = settings.side.mode
+
+        if mode == "Jitter" then
+            local delay = calculate_delay()
+
+            if globals.choked_commands == 0 and should_switch_side(delay) then
+                local packet = sent_packets % (delay * 2)
+                return packet < delay
+            end
+
+            return rage.antiaim:inverter()
+        else
+            return settings.side.invert
+        end
+    end
+
+    local function update_player(e)
+        if e.choked_commands == 0 then
+            sent_packets = sent_packets + 1
+        end
+    end
+
+    local function update_yaw(e)
+        local settings = get_current_settings()
+
+        local yaw_info = {
+            mode     = settings.yaw.mode,
+            offset   = settings.yaw.offset,
+            left     = settings.yaw.left,
+            right    = settings.yaw.right,
+            random   = settings.yaw.random,
+            delay    = calculate_delay(),
+            side     = get_inverter(),
+            inverter = false,
+            options  = {}
+        }
+
+        rage.antiaim:inverter(yaw_info.side)
+        yaw_info.inverter = yaw_info.side
+
+        local random_offset = utils.random_int(0, yaw_info.random)
+        local to_override = yaw_info.mode == "Offset"
+            and yaw_info.offset
+            or (yaw_info.side and yaw_info.left + random_offset or yaw_info.right + random_offset)
+
+        nl.antiaim.angles.yaw_add:override(to_override)
+        nl.antiaim.angles.inverter:override(yaw_info.inverter)
+        nl.antiaim.angles.options:override(yaw_info.options)
+    end
+
+    local function on_createmove(e)
+        update_player(e)
+        update_yaw(e)
+    end
+
+    events.createmove(on_createmove)
 end
 
 
