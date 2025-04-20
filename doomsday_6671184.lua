@@ -1,5 +1,4 @@
--- Конфиг-система в стиле Neverlose (оптимизированная)
--- Повышена читаемость, переиспользуемость и расширяемость логики
+
 
 local clipboard = require("neverlose/clipboard")
 
@@ -10,7 +9,6 @@ local function pad(text, count)
     return text .. string.rep(HSP, count)
 end
 
---- animations.lua
 local animations do
     animations = {}
     local anim = color()
@@ -84,7 +82,6 @@ local icons do
         left = left or 0
         right = right or 0
     
-        -- Определяем префикс цвета
         local prefix = ""
         if color then
             -- Если пользователь уже указал \a, не добавляем повторно
@@ -768,7 +765,6 @@ local condition = {
 }
 
 local angles_frontend do
-    -- Список всех условий
     angles = {}
     angles.conditions = {
         condition.STANDING,
@@ -792,12 +788,11 @@ local angles_frontend do
         angles.main:combo("", angles.conditions)
     )
 
-    -- Селектор режима (Builder / Hotkeys / Features)
     angles.selection = config.push(
         angles.selection:list("", "Builder", "Hotkeys", "Features")
     )
 
-    -- Функция: внутри группы конкретного условия фильтруем подэлементы Yaw
+
     local function apply_yaw_visibility(items)
         local yaw = items.yaw
         local idx = yaw:get()
