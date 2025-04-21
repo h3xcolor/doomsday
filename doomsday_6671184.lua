@@ -174,7 +174,7 @@ local nl do
         }
     }
 
-    nl.antiaim = {
+    nl.aa = {
         angles = {
             enabled = ui.find('Aimbot', 'Anti Aim', 'Angles', 'Enabled'),
             pitch = ui.find('Aimbot', 'Anti Aim', 'Angles', 'Pitch'),
@@ -792,7 +792,7 @@ local angles_frontend do
         local show = (m == "Side Based")
         ctx.yaw_l:visibility(show)
         ctx.yaw_r:visibility(show)
-        ctx.yaw_rand:visibility(show)
+        --ctx.yaw_rand:visibility(show)
     end
 
     local function update_visibility_side(ctx)
@@ -847,12 +847,14 @@ local angles_frontend do
     local function generate_body(tab, ctx)
         ctx.by = config.push(tab:switch("Body Yaw"))
         ctx.by_mode = config.push(tab:combo("Limit Mode##limit_mode", {"Static", "Sway", "Randomize"}))
+        ctx.by_fs = config.push(tab:combo("Freestanding", {"Off", "Peek Real", "Peek Fake"}))
         local bod = ctx.by_mode:create("Body Yaw Settings")
         ctx.by_stat = config.push(bod:slider("Val##limit_static",  0, 60, 60, 1))
         ctx.by_sw1  = config.push(bod:slider("From##limit_sway",   0, 60, 60, 1))
         ctx.by_sw2  = config.push(bod:slider("To##limit_sway",     0, 60, 60, 1))
         ctx.by_r1   = config.push(bod:slider("Min##limit_random",  0, 60, 60, 1))
         ctx.by_r2   = config.push(bod:slider("Max##limit_random",  0, 60, 60, 1))
+
         ctx.by_mode:set_callback(function() update_visibility_body(ctx) end)
         update_visibility_body(ctx)
     end
@@ -899,6 +901,13 @@ local angles_frontend do
         local show = angles.selection:get(1) == 1
         angles.main:visibility(show)
         angles.condition_selector:visibility(show)
+
+        for _, tabs in pairs(angles.groups) do
+            tabs[1]:visibility(false)
+            tabs[2]:visibility(false)
+            tabs[3]:visibility(false)
+        end
+
         if show then update_visibility_for_condition() end
     end
 
@@ -915,7 +924,7 @@ local angles_backend do
 
     local function compute_state()
         if localplayer.is_onground then
-            if nl.antiaim.misc.slow_walk:get() then
+            if nl.aa.misc.slow_walk:get() then
                 return condition.SLOW_WALK
             end
             if not localplayer.is_moving then
@@ -955,7 +964,12 @@ local angles_backend do
                 sway_from  = ctx.by_sw1:get(),
                 sway_to    = ctx.by_sw2:get(),
                 rand_min   = ctx.by_r1:get(),
-                rand_max   = ctx.by_r2:get()
+                rand_max   = ctx.by_r2:get(),
+                fs = ctx.by_fs:get()
+            },
+            mod = {
+                mode  = ctx.mod:get(),
+                value = ctx.mod_val:get()
             },
             exploit = ctx.exploit:get()
         }
@@ -1019,10 +1033,40 @@ local angles_backend do
         end
     end
 
+    local function apply_modifier(base, side, value, mode, left, right)
+        if mode == "Disabled" then return base end
+
+        if mode == "Center" then
+            local offset = value * 0.5
+            local centered_left = left - offset
+            local centered_right = right + offset
+
+            return side and centered_left or centered_right
+        end
+
+        if mode == "3-Way" then
+            local pattern = { -1.0, 0.0, 1.0 }
+            local index = sent_packets % #pattern
+            return base + pattern[index + 1] * value
+        end
+
+        if mode == "Random" then
+            return base + utils.random_int(-value, value)
+        end
+
+        return base + (side and value or -value)
+    end
+
+
+    local function lerp(a, b, t)
+        return a + t * (b - a)
+    end
+
+
     local function update_yaw(e)
         local settings = get_current_settings()
 
-        local yaw_info = {
+        local i = {
             mode     = settings.yaw.mode,
             offset   = settings.yaw.offset,
             left     = settings.yaw.left,
@@ -1031,29 +1075,119 @@ local angles_backend do
             delay    = calculate_delay(),
             side     = get_inverter(),
             inverter = false,
-            options  = {}
+            options  = {},
+            mod_mode = settings.mod.mode,
+            mod_val  = settings.mod.value,
         }
 
-        rage.antiaim:inverter(yaw_info.side)
-        yaw_info.inverter = yaw_info.side
+        i.random_offset = utils.random_int(0, i.random)
 
-        local random_offset = utils.random_int(0, yaw_info.random)
-        local to_override = yaw_info.mode == "Offset"
-            and yaw_info.offset
-            or (yaw_info.side and yaw_info.left + random_offset or yaw_info.right + random_offset)
+        rage.antiaim:inverter(i.side)
+        i.inverter = i.side
 
-        nl.antiaim.angles.yaw_add:override(to_override)
-        nl.antiaim.angles.inverter:override(yaw_info.inverter)
-        nl.antiaim.angles.options:override(yaw_info.options)
+        if i.mode == "Offset" then
+            i.left = i.offset
+            i.right = i.offset
+        end
+
+        local base = i.side and i.left - i.random_offset or i.right + i.random_offset
+        local final_yaw = apply_modifier(base, i.side, i.mod_val, i.mod_mode, i.left, i.right)
+
+        nl.aa.angles.yaw_modifier:override("Disabled")
+        nl.aa.angles.yaw_add:override(final_yaw)
+        nl.aa.angles.inverter:override(i.inverter)
+        nl.aa.angles.options:override(i.options)
     end
+
+    local need_reset = false
+
+    local function override_exploit(e)
+        
+        local settings = get_current_settings()
+        local ctx = {
+            exploit = settings.exploit,
+            ovr_dt = "",
+            ovr_hs = ""
+        }
+
+        if need_reset == true then
+            nl.rage.main.double_tap_lag_options:override()
+            nl.rage.main.hide_shots_options:override()
+        end
+
+        local me = entity.get_local_player()
+        local weapon = me:get_player_weapon()
+
+
+        if ctx.exploit[1] == "Double Tap" then 
+            ctx.ovr_dt = "Always On"
+            need_reset = true
+        end
+
+        if ctx.exploit[2] == "Hide Shots" then
+            ctx.ovr_hs = "Break LC"
+            need_reset = true
+        end
+
+        if weapon.m_bPinPulled then
+            ctx.ovr_dt = "Disabled"
+            ctx.ovr_hs = "Favor Fire Rate"
+            need_reset = true
+        end
+
+        nl.rage.main.double_tap_lag_options:override(ctx.ovr_dt)
+        nl.rage.main.hide_shots_options:override(ctx.ovr_hs)
+
+    end
+
+    
+    local function calculate_body_yaw()
+        local settings = get_current_settings()
+
+    
+        local mode = settings.body.mode
+    
+        if mode == "Static" then
+            return settings.body.static_val
+        end
+
+        if mode == "Sway" then
+            local time = globals.curtime * 0.5
+            return lerp(settings.body.sway_from, settings.body.sway_to, time % 1)
+        end
+
+        if mode == "Randomize" then
+            return utils.random_int(settings.body.rand_min, settings.body.rand_max)
+        end
+    
+    end
+
+    local function override_body_yaw(e)
+        local settings = get_current_settings()
+
+        local ctx = {
+            enabled = settings.body.enabled,
+            value = calculate_body_yaw(),
+            fs = settings.body.fs
+        }
+
+        nl.aa.angles.body_yaw:override(ctx.enabled)
+        nl.aa.angles.body_yaw_freestanding_desync:override(ctx.fs)
+        nl.aa.angles.left_limit:override(ctx.value)
+        nl.aa.angles.right_limit:override(ctx.value)
+    end
+    
 
     local function on_createmove(e)
         update_player(e)
         update_yaw(e)
+        override_exploit(e)
+        override_body_yaw(e)
     end
 
     events.createmove(on_createmove)
 end
+
 
 
 local misc_frontend do
