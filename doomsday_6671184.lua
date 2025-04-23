@@ -1,5 +1,3 @@
--- Конфиг-система в стиле Neverlose (оптимизированная)
--- Повышена читаемость, переиспользуемость и расширяемость логики
 
 local clipboard = require("neverlose/clipboard")
 
@@ -10,7 +8,7 @@ local function pad(text, count)
     return text .. string.rep(HSP, count)
 end
 
---- animations.lua
+
 local animations do
     animations = {}
     local anim = color()
@@ -43,6 +41,8 @@ local animations do
 
         return table.concat(parts)
     end
+
+    
 end
 
 
@@ -67,6 +67,24 @@ local sidebar do
     events.render:set(on_render)
 end
 
+local watermark do
+    local name = "DOOMSDAY IS OUT"
+    local iconChar = ui.get_icon("gem")
+
+    local function on_render()
+        local screen = render.screen_size()
+        local x = screen.x / 2
+        local y = screen.y - 20
+
+        local style = ui.get_style()
+        local base_color = style["Link Active"]
+
+        local waved = animations.wave(name, base_color)
+        render.text(1, vector(x, y), color(255, 255, 255, 255), "c", waved)
+    end
+
+    events.render:set(on_render)
+end
 
 
 local icons do
@@ -121,6 +139,8 @@ local sounds do
         play:call(path, 1)
     end
 end
+
+
 
 
 
@@ -279,9 +299,6 @@ local localplayer do
     localplayer.team_num = 0
     localplayer.sent_packets = 0
 
-    local function extrapolate(origin, velocity, ticks)
-        return origin + velocity * (ticks * globals.tickinterval)
-    end
 
     local function on_createmove(cmd)
         local me = entity.get_local_player()
@@ -768,9 +785,13 @@ local condition = {
 }
 
 
-local angles_frontend do
-    angles = {}
-    angles.conditions = {
+    builder = {}
+    builder.selection_tab = ui.create(tabs.angles, "Selection", 1)
+    builder.selection = config.push(builder.selection_tab:list("", "Builder", "Hotkeys", "Features"))
+    
+    local angles_frontend do
+
+    builder.conditions = {
         condition.STANDING,
         condition.MOVING,
         condition.SLOW_WALK,
@@ -780,11 +801,11 @@ local angles_frontend do
         condition.AIR_CROUCH,
     }
 
-    angles.selection = ui.create(tabs.angles, "Selection", 1)
-    angles.main = ui.create(tabs.angles, "Builder", 2)
 
-    angles.condition_selector = config.push(angles.main:combo("", angles.conditions))
-    angles.selection = config.push(angles.selection:list("", "Builder", "Hotkeys", "Features"))
+    builder.main = ui.create(tabs.angles, "Builder", 2)
+
+    builder.condition_selector = config.push(builder.main:combo("", builder.conditions))
+
 
     local function update_visibility_yaw(ctx)
         local m = ctx.yaw:get()
@@ -839,15 +860,15 @@ local angles_frontend do
         ctx.side_mode:set_callback(function() update_visibility_side(ctx) end)
         update_visibility_side(ctx)
 
-        ctx.mod = config.push(tab:combo("Mod", {"Disabled", "Center", "3-Way", "Random"}))
+        ctx.mod = config.push(tab:combo("Modify", {"Disabled", "Center", "3-Way", "Random"}))
         local mod = ctx.mod:create("Mod Settings")
         ctx.mod_val = config.push(mod:slider("Val##mod_val", -180, 180, 0, 1))
     end
 
     local function generate_body(tab, ctx)
         ctx.by = config.push(tab:switch("Body Yaw"))
-        ctx.by_mode = config.push(tab:combo("Limit Mode##limit_mode", {"Static", "Sway", "Randomize"}))
-        ctx.by_fs = config.push(tab:combo("Freestanding", {"Off", "Peek Real", "Peek Fake"}))
+        ctx.by_mode = config.push(tab:combo("Limit##limit_mode", {"Static", "Sway", "Randomize"}))
+        ctx.by_fs = config.push(tab:combo("Freestand", {"Off", "Peek Real", "Peek Fake"}))
         local bod = ctx.by_mode:create("Body Yaw Settings")
         ctx.by_stat = config.push(bod:slider("Val##limit_static",  0, 60, 60, 1))
         ctx.by_sw1  = config.push(bod:slider("From##limit_sway",   0, 60, 60, 1))
@@ -863,14 +884,14 @@ local angles_frontend do
         ctx.exploit = config.push(tab:selectable("Exploit", "Double Tap", "Hide Shots"))
     end
 
-    angles.groups = {}
+    builder.groups = {}
 
     local function build_for_condition(cond, ctx)
         local id = "##" .. cond
         local a = ui.create(tabs.angles, id .. "_angles", 2)
         local b = ui.create(tabs.angles, id .. "_body",   2)
         local l = ui.create(tabs.angles, id .. "_lc",     1)
-        angles.groups[cond] = {a, b, l}
+        builder.groups[cond] = {a, b, l}
         generate_angles(a, ctx)
         generate_body(b, ctx)
         generate_lc(l, ctx)
@@ -878,18 +899,19 @@ local angles_frontend do
 
     local function create_condition_settings()
         local result = {}
-        for _, cond in ipairs(angles.conditions) do
+        for _, cond in ipairs(builder.conditions) do
             result[cond] = {}
             build_for_condition(cond, result[cond])
         end
         return result
     end
 
-    angles.groups_data = create_condition_settings()
+    builder.groups_data = create_condition_settings()
 
     local function update_visibility_for_condition()
-        local sel = angles.condition_selector:get()
-        for cond, tabs in pairs(angles.groups) do
+        local sel = builder.condition_selector:get()
+        if builder.selection:get(1) ~= 1 then return end
+        for cond, tabs in pairs(builder.groups) do
             local vis = (cond == sel)
             tabs[1]:visibility(vis)
             tabs[2]:visibility(vis)
@@ -898,29 +920,49 @@ local angles_frontend do
     end
 
     local function update_visibility_for_builder()
-        local show = angles.selection:get(1) == 1
-        angles.main:visibility(show)
-        angles.condition_selector:visibility(show)
+        local show = builder.selection:get(1) == 1
+        builder.main:visibility(show)
+        builder.condition_selector:visibility(show)
 
-        for _, tabs in pairs(angles.groups) do
-            tabs[1]:visibility(false)
-            tabs[2]:visibility(false)
-            tabs[3]:visibility(false)
+        for _, tabs in pairs(builder.groups) do
+            tabs[1]:visibility(show)
+            tabs[2]:visibility(show)
+            tabs[3]:visibility(show)
         end
 
         if show then update_visibility_for_condition() end
     end
 
-    angles.condition_selector:set_callback(update_visibility_for_condition, true)
-    angles.selection:set_callback(update_visibility_for_builder, true)
+    builder.condition_selector:set_callback(update_visibility_for_condition, true)
+    builder.selection:set_callback(update_visibility_for_builder, true)
+end
+
+
+local angles_hotkeys do
+    hotkeys = { }
+
+    hotkeys.main = ui.create(tabs.angles, " ##Main", 2)
+
+    hotkeys.freestanding = config.push(hotkeys.main:switch("Freestanding"))
+    hotkeys.manuals = config.push(hotkeys.main:slider("Rotation", -180, 180, 0, 1))
+
+
+    local function update_visibility_for_hotkeys()
+        local show = builder.selection:get(2) == 2
+
+        hotkeys.main:visibility(show)
+    end
+
+    builder.selection:set_callback(update_visibility_for_hotkeys, true)
+
 end
 
 local angles_backend do
 
-    local sent_packets = 0
     local current_delay = 0
     local tick_counter = 0
     local chance_tick_counter = 0
+    local need_reset = false
 
     local function compute_state()
         if localplayer.is_onground then
@@ -937,7 +979,7 @@ local angles_backend do
 
     local function get_current_settings()
         local state = compute_state()
-        local ctx = angles.groups_data[state]
+        local ctx = builder.groups_data[state]
         if not ctx then return {} end
 
         return {
@@ -965,7 +1007,7 @@ local angles_backend do
                 sway_to    = ctx.by_sw2:get(),
                 rand_min   = ctx.by_r1:get(),
                 rand_max   = ctx.by_r2:get(),
-                fs = ctx.by_fs:get()
+                fs         = ctx.by_fs:get()
             },
             mod = {
                 mode  = ctx.mod:get(),
@@ -981,8 +1023,7 @@ local angles_backend do
         if chance_tick_counter >= tick_interval then
             chance_tick_counter = 0
             local settings = get_current_settings()
-            local roll = utils.random_int(0, 100)
-            return roll <= settings.side.chance
+            return utils.random_int(0, 100) <= settings.side.chance
         end
 
         return false
@@ -994,15 +1035,12 @@ local angles_backend do
 
         if mode == "Static" then
             return settings.side.static
-
         elseif mode == "Randomize" then
             tick_counter = tick_counter + 1
-
             if tick_counter >= current_delay then
                 current_delay = utils.random_int(settings.side.minimum, settings.side.maximum)
                 tick_counter = 0
             end
-
             return current_delay
         end
 
@@ -1015,21 +1053,13 @@ local angles_backend do
 
         if mode == "Jitter" then
             local delay = calculate_delay()
-
             if globals.choked_commands == 0 and should_switch_side(delay) then
-                local packet = sent_packets % (delay * 2)
+                local packet = localplayer.sent_packets % (delay * 2)
                 return packet < delay
             end
-
             return rage.antiaim:inverter()
         else
             return settings.side.invert
-        end
-    end
-
-    local function update_player(e)
-        if e.choked_commands == 0 then
-            sent_packets = sent_packets + 1
         end
     end
 
@@ -1038,10 +1068,7 @@ local angles_backend do
 
         if mode == "Center" then
             local offset = value * 0.5
-            local centered_left = left - offset
-            local centered_right = right + offset
-
-            return side and centered_left or centered_right
+            return side and (left - offset) or (right + offset)
         end
 
         if mode == "3-Way" then
@@ -1057,16 +1084,14 @@ local angles_backend do
         return base + (side and value or -value)
     end
 
-
     local function lerp(a, b, t)
         return a + t * (b - a)
     end
 
-
     local function update_yaw(e)
         local settings = get_current_settings()
 
-        local i = {
+        local ctx = {
             mode     = settings.yaw.mode,
             offset   = settings.yaw.offset,
             left     = settings.yaw.left,
@@ -1080,106 +1105,89 @@ local angles_backend do
             mod_val  = settings.mod.value,
         }
 
-        i.random_offset = utils.random_int(0, i.random)
+        ctx.random_offset = utils.random_int(0, ctx.random)
+        rage.antiaim:inverter(ctx.side)
+        ctx.inverter = ctx.side
 
-        rage.antiaim:inverter(i.side)
-        i.inverter = i.side
-
-        if i.mode == "Offset" then
-            i.left = i.offset
-            i.right = i.offset
+        if ctx.mode == "Offset" then
+            ctx.left = ctx.offset
+            ctx.right = ctx.offset
         end
 
-        local base = i.side and i.left - i.random_offset or i.right + i.random_offset
-        local final_yaw = apply_modifier(base, i.side, i.mod_val, i.mod_mode, i.left, i.right)
+        local base = ctx.side and ctx.left - ctx.random_offset or ctx.right + ctx.random_offset
+        local final_yaw = apply_modifier(base, ctx.side, ctx.mod_val, ctx.mod_mode, ctx.left, ctx.right)
 
         nl.aa.angles.yaw_modifier:override("Disabled")
         nl.aa.angles.yaw_add:override(final_yaw)
-        nl.aa.angles.inverter:override(i.inverter)
-        nl.aa.angles.options:override(i.options)
+        nl.aa.angles.inverter:override(ctx.inverter)
+        nl.aa.angles.options:override(ctx.options)
     end
 
-    local need_reset = false
-
     local function override_exploit(e)
-        
         local settings = get_current_settings()
-        local ctx = {
-            exploit = settings.exploit,
-            ovr_dt = "",
-            ovr_hs = ""
-        }
 
-        if need_reset == true then
+        if need_reset then
             nl.rage.main.double_tap_lag_options:override()
             nl.rage.main.hide_shots_options:override()
+        end
+
+        local ctx = {
+            dt = "",
+            hs = ""
+        }
+
+        if settings.exploit[1] == "Double Tap" then
+            ctx.dt = "Always On"
+            need_reset = true
+        end
+
+        if settings.exploit[2] == "Hide Shots" then
+            ctx.hs = "Break LC"
+            need_reset = true
         end
 
         local me = entity.get_local_player()
         local weapon = me:get_player_weapon()
 
-
-        if ctx.exploit[1] == "Double Tap" then 
-            ctx.ovr_dt = "Always On"
-            need_reset = true
-        end
-
-        if ctx.exploit[2] == "Hide Shots" then
-            ctx.ovr_hs = "Break LC"
-            need_reset = true
-        end
+        if not me then return end
+        if not weapon then return end
 
         if weapon.m_bPinPulled then
-            ctx.ovr_dt = "Disabled"
-            ctx.ovr_hs = "Favor Fire Rate"
+            ctx.dt = "Disabled"
+            ctx.hs = "Favor Fire Rate"
             need_reset = true
         end
 
-        nl.rage.main.double_tap_lag_options:override(ctx.ovr_dt)
-        nl.rage.main.hide_shots_options:override(ctx.ovr_hs)
-
+        nl.rage.main.double_tap_lag_options:override(ctx.dt)
+        nl.rage.main.hide_shots_options:override(ctx.hs)
     end
 
-    
     local function calculate_body_yaw()
         local settings = get_current_settings()
-
-    
         local mode = settings.body.mode
-    
+
         if mode == "Static" then
             return settings.body.static_val
-        end
-
-        if mode == "Sway" then
-            local time = globals.curtime * 0.5
-            return lerp(settings.body.sway_from, settings.body.sway_to, time % 1)
-        end
-
-        if mode == "Randomize" then
+        elseif mode == "Sway" then
+            return lerp(settings.body.sway_from, settings.body.sway_to, globals.curtime * 0.5 % 1)
+        elseif mode == "Randomize" then
             return utils.random_int(settings.body.rand_min, settings.body.rand_max)
         end
-    
+
+        return 0
     end
 
     local function override_body_yaw(e)
         local settings = get_current_settings()
+        local value = calculate_body_yaw()
 
-        local ctx = {
-            enabled = settings.body.enabled,
-            value = calculate_body_yaw(),
-            fs = settings.body.fs
-        }
-
-        nl.aa.angles.body_yaw:override(ctx.enabled)
-        nl.aa.angles.body_yaw_freestanding_desync:override(ctx.fs)
-        nl.aa.angles.left_limit:override(ctx.value)
-        nl.aa.angles.right_limit:override(ctx.value)
+        nl.aa.angles.body_yaw:override(settings.body.enabled)
+        nl.aa.angles.body_yaw_freestanding_desync:override(settings.body.fs)
+        nl.aa.angles.left_limit:override(value)
+        nl.aa.angles.right_limit:override(value)
     end
-    
 
     local function on_createmove(e)
-        update_player(e)
         update_yaw(e)
         override_exploit(e)
         override_body_yaw(e)
@@ -1188,13 +1196,14 @@ local angles_backend do
     events.createmove(on_createmove)
 end
 
-
-
 local misc_frontend do
     misc = { }
 
     misc.tab = ui.create(tabs.misc, "Pook")
 
-    misc.test = config.push(misc.tab:switch("Switch"))
+    misc.test = config.push(misc.tab:slider("", 0, 100, 50,1))
+
+    local group = misc.test:create()
+
 
 end
